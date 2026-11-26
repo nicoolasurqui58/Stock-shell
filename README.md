@@ -16,6 +16,14 @@ App interactiva para el teléfono: control de stock, ventas en pesos, Mercado Pa
 - **⛽ Combustible**: precios por litro editables (Súper, Premium, Diésel), registrás litros vendidos y calcula el total.
 - **💰 Resumen**: totales del día (efectivo / MP con comisión / combustible), valor total del stock, exportar a CSV, copia de seguridad JSON, historial de días cerrados.
 
+## Instalar como APK / app
+
+- **Más fácil**: abrí `https://nicoolasurqui58.github.io/Stock-shell/` en Chrome de Android → menú ⋮ → **"Instalar aplicación"**. Chrome genera e instala un APK (WebAPK) oficial con ícono propio, todo gratis.
+- **APK descargable**: entrar a [pwabuilder.com](https://www.pwabuilder.com), pegar la misma dirección y en *Android* descargar el paquete APK.
+- En iPhone: compartir → **"Agregar a pantalla de inicio"**.
+
+Además, en el stock se puede **reordenar**: mantener apretado un producto y arrastrarlo arriba/abajo; el orden queda guardado.
+
 ## Datos
 
 Todo se guarda en el navegador del teléfono (localStorage). Ojo: si borrás los datos del navegador, se borra la app. Sacá una **Copia JSON** de vez en cuando desde Resumen.
