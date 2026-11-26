@@ -83,11 +83,13 @@
     background:#0b1220; color:var(--ambar); font-size:16px; font-weight:800; cursor:pointer; flex-shrink:0;
   }
   .editprecio:active{filter:brightness(1.4)}
-  .prodc{touch-action:none; -webkit-touch-callout:none}
-  .prodc.dragging{
-    position:relative; z-index:30; opacity:.95;
-    box-shadow:0 10px 30px rgba(0,0,0,.65); background:#334155;
+  .prodc.moviendola{outline:2px dashed var(--ambar); background:#1e293b}
+  .bannerMover{
+    display:flex; align-items:center; gap:10px; justify-content:space-between;
+    background:var(--ambar); color:#1c1917; font-weight:800; font-size:13.5px;
+    padding:10px 12px; border-radius:12px; margin-bottom:10px;
   }
+  .bannerMover button{background:#1c1917; color:#fff; border:none; border-radius:8px; padding:8px 12px; font-weight:700; cursor:pointer; flex-shrink:0}
   .plus:active,.minus:active{filter:brightness(1.25)}
 
   input,select{
@@ -409,8 +411,9 @@ function vStock(){
     <div class="card">
       <div class="row between">
         <h2>📦 Stock <span class="mut" style="text-transform:none">(${db.productos.length})</span></h2>
-        <span class="mut" style="font-size:12px">tocá el nombre para editar · mantené apretado y arrastrá para ordenar ↑↓</span>
+        <span class="mut" style="font-size:12px">tocá el nombre para editar · mantené apretado un producto para moverlo</span>
       </div>
+      ${moviendoId ? `<div class="bannerMover"><span>✋ Moviendo: ${esc((db.productos.find(p=>p.id===moviendoId)||{}).nombre||'')} — tocá la fila donde lo querés</span><button onclick="cancelarMover()">Cancelar</button></div>` : ''}
       <div class="row between" style="background:#0b1220; border-radius:10px; padding:10px 12px; margin-bottom:10px">
         <span class="mut">Valor total del stock</span><b class="verde" style="font-size:17px" id="valStockLista"></b>
       </div>
@@ -422,7 +425,7 @@ function vStock(){
   const cont = $('#listaProd2');
   db.productos.forEach(p=>{
     const d = document.createElement('div');
-    d.className = 'prodc';
+    d.className = 'prodc' + (moviendoId === p.id ? ' moviendola' : '');
     d.dataset.pid = p.id;
     const cls = p.cant<=0 ? 'cero' : p.cant<=3 ? 'bajo' : '';
     d.innerHTML = `
@@ -443,8 +446,29 @@ function vStock(){
       p.precio = num(v); guardar(); render(); toast('Precio guardado ✓');
     };
     cont.appendChild(d);
-    attachDrag(d);
+    let lpT = null, lpY = 0;
+    const cortarLP = ()=>{ if (lpT){ clearTimeout(lpT); lpT = null; } };
+    d.addEventListener('pointerdown', e=>{
+      if (e.target.closest('button')) return;
+      if (moviendoId) return;
+      lpY = e.clientY;
+      cortarLP();
+      lpT = setTimeout(()=>{ lpT = null; moviendoId = p.id; if (navigator.vibrate) navigator.vibrate(60); render(); }, 450);
+    });
+    d.addEventListener('pointermove', e=>{ if (lpT && Math.abs(e.clientY - lpY) > 12) cortarLP(); });
+    d.addEventListener('pointerup', cortarLP);
+    d.addEventListener('pointercancel', cortarLP);
+    d.addEventListener('pointerleave', cortarLP);
+    d.addEventListener('contextmenu', e=>e.preventDefault());
   });
+  if (moviendoId){
+    cont.addEventListener('click', e=>{
+      const fila = e.target.closest('.prodc');
+      if (!fila) return;
+      e.stopPropagation(); e.preventDefault();
+      colocarMover(fila.dataset.pid);
+    }, true);
+  }
 }
 
 function abrirProd(id){
@@ -802,8 +826,6 @@ function backup(){
 }
 
 /* ---------- reordenar: mantener apretado y arrastrar (pointer events) ---------- */
-let skipClick = false;
-
 function fmtMiles(v){
   const n = num(v);
   if (!n) return '';
@@ -814,79 +836,25 @@ function fmtMiles(v){
   return neg + entG + (decL ? ',' + decL : '');
 }
 
-function persistOrder(){
-  const cont = $('#listaProd2');
-  if (!cont) return;
-  const ids = [...cont.children].map(r=>r.dataset.pid);
-  db.productos.sort((a,b)=>ids.indexOf(a.id) - ids.indexOf(b.id));
-  guardar();
+let moviendoId = null;
+
+function colocarMover(idDest){
+  if (!moviendoId) return;
+  const from = db.productos.findIndex(p=>p.id===moviendoId);
+  const item = from >= 0 ? db.productos.splice(from, 1)[0] : null;
+  const movio = !!(item && idDest && idDest !== moviendoId);
+  if (movio){
+    const to = db.productos.findIndex(p=>p.id===idDest);
+    if (to >= 0) db.productos.splice(to, 0, item);
+    else db.productos.push(item);
+  } else if (item && from >= 0){
+    db.productos.splice(from, 0, item);
+  }
+  moviendoId = null;
+  guardar(); render();
+  if (movio) toast('Orden guardado ✓');
 }
-
-function attachDrag(row){
-  let timer = null, activado = false, anclaY = 0, lastY = 0;
-
-  row.addEventListener('pointerdown', e => {
-    if (e.target.closest('button')) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    activado = false;
-    anclaY = lastY = e.clientY;
-    try{ row.setPointerCapture(e.pointerId); }catch(err){}
-    clearTimeout(timer);
-    timer = setTimeout(()=>{
-      activado = true;
-      skipClick = true;
-      anclaY = lastY;
-      row.classList.add('dragging');
-      if (navigator.vibrate) navigator.vibrate(40);
-    }, 300);
-  });
-
-  row.addEventListener('pointermove', e => {
-    lastY = e.clientY;
-    if (!activado) return;
-    e.preventDefault();
-    let offset = e.clientY - anclaY;
-    row.style.transform = 'translateY(' + offset + 'px)';
-
-    const arriba = row.previousElementSibling, abajo = row.nextElementSibling;
-    if (arriba && offset < 0 && row.getBoundingClientRect().top < arriba.getBoundingClientRect().top + arriba.offsetHeight*0.45){
-      const salto = row.getBoundingClientRect().top;
-      arriba.after(row);
-      anclaY += row.getBoundingClientRect().top - salto;
-      offset = e.clientY - anclaY;
-      row.style.transform = 'translateY(' + offset + 'px)';
-    } else if (abajo && offset > 0 && row.getBoundingClientRect().bottom > abajo.getBoundingClientRect().top + abajo.offsetHeight*0.45){
-      const salto = row.getBoundingClientRect().top;
-      row.after(abajo);
-      anclaY += row.getBoundingClientRect().top - salto;
-      offset = e.clientY - anclaY;
-      row.style.transform = 'translateY(' + offset + 'px)';
-    }
-
-    if (e.clientY < 90){ window.scrollBy(0,-14); anclaY += 14; }
-    else if (e.clientY > window.innerHeight - 90){ window.scrollBy(0,14); anclaY -= 14; }
-  });
-
-  const soltar = () => {
-    clearTimeout(timer);
-    if (activado){
-      activado = false;
-      row.classList.remove('dragging');
-      row.style.transform = '';
-      persistOrder();
-      setTimeout(()=>{ skipClick = false; }, 400);
-    }
-  };
-  row.addEventListener('pointerup', soltar);
-  row.addEventListener('pointercancel', soltar);
-  row.addEventListener('contextmenu', e => e.preventDefault());
-}
-
-const _abrirProd = abrirProd;
-abrirProd = function(id){
-  if (skipClick) return;
-  _abrirProd(id);
-};
+function cancelarMover(){ moviendoId = null; render(); }
 
 /* ---------- service worker (para "Instalar aplicación" / APK) ---------- */
 if ('serviceWorker' in navigator){
