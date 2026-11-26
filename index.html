@@ -206,7 +206,6 @@
   <label>Cobro</label>
   <div class="metodos">
     <button class="ef sel" id="vEf">💵 Efectivo</button>
-    <button class="mp" id="vMp">🟣 Mercado Pago</button>
   </div>
   <label class="chk"><input type="checkbox" id="vFactura"> Con factura (C/F)</label>
   <div class="row between" style="margin-top:12px; background:#0b1220; border-radius:10px; padding:12px">
@@ -375,7 +374,7 @@ const totalVentSF = () => delDia().filter(v=>!v.factura).reduce((a,v)=>a+v.total
 const totalBombas = () => db.bombas.reduce((a,b)=>a + Math.max(0,(num(b.fin)-num(b.ini))) * (db.preciosComb[b.tipo]||0), 0);
 const totalComb   = () => combCargas() + totalBombas();
 const totalDia    = () => delDia().reduce((a,v)=>a+v.total,0);
-const totalRend   = () => { const r = db.rendicion; return num(r.pesos)+num(r.ctacte)+num(r.tarjetas)+num(r.gastos)+num(r.retiros); };
+const totalRend   = () => { const r = db.rendicion; return num(r.pesos)+num(r.ctacte)+totalMet('mp')+num(r.gastos)+num(r.retiros); };
 const totalTurno  = () => totalDia() + totalBombas();
 
 /* ---------- pestañas ---------- */
@@ -468,13 +467,12 @@ $('#mProdGuardar').onclick = ()=>{
 /* ---------- VENTAS ---------- */
 function vVentas(){
   const tE = totalMet('efectivo'), tM = totalMet('mp');
-  const lista = delDia().slice().reverse();
+  const lista = delDia().filter(v=>v.metodo!=='mp').slice().reverse();
   $('#vista').innerHTML = `
     <div class="card">
       <div class="row between"><h2>🛒 Ventas del turno</h2><button class="btn ok" onclick="abrirVenta()">+ Venta</button></div>
       <div class="row between" style="margin:6px 0"><span class="mut">💵 Efectivo</span><b class="verde">${fmt(tE)}</b></div>
-      <div class="row between"><span class="mut">🟣 Mercado Pago</span><b class="violeta">${fmt(tM)}</b></div>
-      <div class="row between mut" style="font-size:12.5px"><span>&nbsp;&nbsp;neto (comisión ${String(db.comisionMP).replace('.',',')}%)</span><span>${fmt(tM*(1-db.comisionMP/100))}</span></div>
+      <div class="row between"><span class="mut">🟣 Mercado Pago (va en su pestaña)</span><b class="violeta">${fmt(tM)}</b></div>
       <div class="row between" style="border-top:1px solid var(--line); margin-top:8px; padding-top:10px">
         <b>TOTAL DEL TURNO</b><b class="big azul">${fmt(totalDia())}</b>
       </div>
@@ -492,7 +490,7 @@ function vVentas(){
         <div style="font-weight:700; font-size:14.5px">${esc(v.desc)}</div>
         <div class="mut" style="font-size:12px">${fmtN(v.cant)} × ${fmt(v.unit)}</div>
       </div>
-      <span class="tag ${v.comb?'nf':(v.metodo==='mp'?'mp':'ef')}">${v.comb?'⛽ '+(v.metodo==='mp'?'MP':'EF'):(v.metodo==='mp'?'MP':'EF')}${v.factura?' · C/F':''}</span>
+      <span class="tag ${v.comb?'nf':'ef'}">${v.comb?'⛽ EF':'EF'}${v.factura?' · C/F':''}</span>
       <b style="min-width:88px; text-align:right">${fmt(v.total)}</b>
       <button class="del" title="borrar">✕</button>`;
     d.querySelector('.del').onclick = ()=>{
@@ -512,7 +510,7 @@ function abrirVenta(){
   metodoVenta = 'efectivo';
   $('#vDesc').value = ''; $('#vCant').value = 1; $('#vPrecio').value = '';
   $('#vFactura').checked = false;
-  $('#vEf').classList.add('sel'); $('#vMp').classList.remove('sel');
+  $('#vEf').classList.add('sel');
   $('#listaProd').innerHTML = db.productos.map(p=>`<option value="${esc(p.nombre)}">`).join('');
   $('#mVenta').showModal();
   setTimeout(()=>$('#vDesc').focus(), 50);
@@ -524,8 +522,7 @@ $('#vDesc').addEventListener('change', ()=>{
 });
 function calcVta(){ $('#vTotal').textContent = fmt(num($('#vCant').value) * num($('#vPrecio').value)); }
 ['vCant','vPrecio'].forEach(id=>$('#'+id).addEventListener('input', calcVta));
-$('#vEf').onclick = ()=>{ metodoVenta='efectivo'; $('#vEf').classList.add('sel'); $('#vMp').classList.remove('sel'); };
-$('#vMp').onclick = ()=>{ metodoVenta='mp'; $('#vMp').classList.add('sel'); $('#vEf').classList.remove('sel'); };
+$('#vEf').onclick = ()=>{ metodoVenta='efectivo'; $('#vEf').classList.add('sel'); };
 $('#mVentaCancelar').onclick = ()=>$('#mVenta').close();
 $('#mVentaGuardar').onclick = ()=>{
   const desc = $('#vDesc').value.trim();
@@ -708,7 +705,7 @@ function vDia(){
       <h2>🧾 Rendición de turno</h2>
       <div class="resline"><span class="mut">💵 Pesos</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="pesos" value="${r.pesos ? fmtMiles(r.pesos) : ''}" placeholder="0"></div>
       <div class="resline"><span class="mut">🏦 Cta. cte.</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="ctacte" value="${r.ctacte ? fmtMiles(r.ctacte) : ''}" placeholder="0"></div>
-      <div class="resline"><span class="mut">💳 Tarjetas</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="tarjetas" value="${r.tarjetas ? fmtMiles(r.tarjetas) : ''}" placeholder="0"></div>
+      <div class="resline"><span class="mut">💳 Tarjetas (MP suma solo)</span><b class="violeta" id="autoTarjetas">${fmt(totalMet('mp'))}</b></div>
       <div class="resline"><span class="mut">🧾 Gastos</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="gastos" value="${r.gastos ? fmtMiles(r.gastos) : ''}" placeholder="0"></div>
       <div class="resline"><span class="mut">↩️ Retiros</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="retiros" value="${r.retiros ? fmtMiles(r.retiros) : ''}" placeholder="0"></div>
       <div class="row between" style="border-top:1px solid var(--line); margin-top:8px; padding-top:10px">
