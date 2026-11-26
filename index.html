@@ -88,6 +88,12 @@
     position:relative; z-index:30; opacity:.95;
     box-shadow:0 10px 30px rgba(0,0,0,.65); background:#334155;
   }
+  .grip{
+    width:30px; height:44px; border:none; background:none; color:var(--mut);
+    font-size:22px; font-weight:800; cursor:grab; flex-shrink:0; padding:0;
+    touch-action:none;
+  }
+  .grip:active{color:#7dd3fc}
   .plus:active,.minus:active{filter:brightness(1.25)}
 
   input,select{
@@ -402,7 +408,7 @@ function vStock(){
     <div class="card">
       <div class="row between">
         <h2>📦 Stock <span class="mut" style="text-transform:none">(${db.productos.length})</span></h2>
-        <span class="mut" style="font-size:12px">tocá el nombre para editar · mantené apretado para mover ↑↓</span>
+        <span class="mut" style="font-size:12px">tocá el nombre para editar · arrastrá con ≡ para ordenar</span>
       </div>
       <div class="row between" style="background:#0b1220; border-radius:10px; padding:10px 12px; margin-bottom:10px">
         <span class="mut">Valor total del stock</span><b class="verde" style="font-size:17px" id="valStockLista"></b>
@@ -419,6 +425,7 @@ function vStock(){
     d.dataset.pid = p.id;
     const cls = p.cant<=0 ? 'cero' : p.cant<=3 ? 'bajo' : '';
     d.innerHTML = `
+      <button class="grip" data-grip aria-label="mantener y arrastrar">≡</button>
       <div class="info" data-edit="${p.id}">
         <div class="nom">${esc(p.nombre)}</div>
         <div class="pre">${p.precio>0 ? fmt(p.precio)+' c/u · Total '+fmt(p.cant*p.precio) : 'tocá $ para poner el precio'}</div>
@@ -756,49 +763,64 @@ function persistOrder(){
 }
 
 function attachDrag(row){
-  let timer = null, dragging = false, startY = 0;
+  let timer = null, dragging = false, ancla = 0, ultimoY = 0;
+
+  const activar = y => {
+    ancla = y;
+    dragging = true;
+    skipClick = true;
+    row.classList.add('dragging');
+    if (navigator.vibrate) navigator.vibrate(35);
+  };
+
+  const grip = row.querySelector('[data-grip]');
+  if (grip){
+    grip.addEventListener('touchstart', e => {
+      e.stopPropagation();
+      activar(e.touches[0].clientY);
+    }, {passive:true});
+    grip.addEventListener('touchend', soltar);
+    grip.addEventListener('touchcancel', soltar);
+  }
 
   row.addEventListener('touchstart', e => {
     if (e.target.closest('button')) return;
-    startY = e.touches[0].clientY;
-    timer = setTimeout(()=>{
-      dragging = true;
-      skipClick = true;
-      row.classList.add('dragging');
-      if (navigator.vibrate) navigator.vibrate(35);
-    }, 350);
+    ultimoY = e.touches[0].clientY;
+    ancla = ultimoY;
+    timer = setTimeout(()=>activar(ultimoY), 300);
   }, {passive:true});
 
   row.addEventListener('touchmove', e => {
+    const y = e.touches[0].clientY;
+    ultimoY = y;
     if (!dragging){
-      if (Math.abs(e.touches[0].clientY - startY) > 12) clearTimeout(timer);
+      if (Math.abs(y - ancla) > 25) clearTimeout(timer);
       return;
     }
     e.preventDefault();
-    let offset = e.touches[0].clientY - startY;
+    let offset = y - ancla;
     row.style.transform = 'translateY(' + offset + 'px)';
 
     const arriba = row.previousElementSibling, abajo = row.nextElementSibling;
-    if (arriba && offset < 0 && row.getBoundingClientRect().top < arriba.getBoundingClientRect().top + arriba.offsetHeight*0.5){
+    if (arriba && offset < 0 && row.getBoundingClientRect().top < arriba.getBoundingClientRect().top + arriba.offsetHeight*0.45){
       const salto = row.getBoundingClientRect().top;
       arriba.after(row);
-      startY += row.getBoundingClientRect().top - salto;
-      offset = e.touches[0].clientY - startY;
+      ancla += row.getBoundingClientRect().top - salto;
+      offset = y - ancla;
       row.style.transform = 'translateY(' + offset + 'px)';
-    } else if (abajo && offset > 0 && row.getBoundingClientRect().bottom > abajo.getBoundingClientRect().top + abajo.offsetHeight*0.5){
+    } else if (abajo && offset > 0 && row.getBoundingClientRect().bottom > abajo.getBoundingClientRect().top + abajo.offsetHeight*0.45){
       const salto = row.getBoundingClientRect().top;
       row.after(abajo);
-      startY += row.getBoundingClientRect().top - salto;
-      offset = e.touches[0].clientY - startY;
+      ancla += row.getBoundingClientRect().top - salto;
+      offset = y - ancla;
       row.style.transform = 'translateY(' + offset + 'px)';
     }
 
-    const y = e.touches[0].clientY;
-    if (y < 90){ window.scrollBy(0,-10); startY += 10; }
-    else if (y > window.innerHeight - 90){ window.scrollBy(0,10); startY -= 10; }
+    if (y < 90){ window.scrollBy(0,-10); ancla += 10; }
+    else if (y > window.innerHeight - 90){ window.scrollBy(0,10); ancla -= 10; }
   }, {passive:false});
 
-  const soltar = () => {
+  function soltar(){
     clearTimeout(timer);
     if (dragging){
       dragging = false;
@@ -807,7 +829,7 @@ function attachDrag(row){
       persistOrder();
       setTimeout(()=>{ skipClick = false; }, 350);
     }
-  };
+  }
   row.addEventListener('touchend', soltar);
   row.addEventListener('touchcancel', soltar);
   row.addEventListener('contextmenu', e => { if (dragging) e.preventDefault(); });
