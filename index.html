@@ -353,6 +353,7 @@ function cargar(){
       if (!merged.bombas.length) merged.bombas = b.bombas;
       merged.preciosComb = Object.assign({}, b.preciosComb, merged.preciosComb);
       TIPOS_COMB.forEach(t=>{ if (!(t in merged.preciosComb)) merged.preciosComb[t]=0; });
+      merged.ventas = (merged.ventas||[]).map(v=>(v.metodo==='mp' && !v.origen) ? Object.assign({}, v, {origen:'mp'}) : v);
       return merged;
     }
   }catch(e){}
