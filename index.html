@@ -72,7 +72,7 @@
     min-width:42px; text-align:center; font-size:18px; font-weight:800;
     background:#0b1220; border-radius:8px; padding:6px 5px;
   }
-  .qty.bajo{color:var(--ambar)} .qty.cero{color:var(--rojo)}
+  .qty.bajo{color:var(--rojo)} .qty.subio{color:var(--verde)}
   .plus,.minus{
     width:44px; height:44px; border-radius:12px; border:none; font-size:23px; font-weight:800; color:#fff; cursor:pointer;
     flex-shrink:0;
@@ -361,6 +361,7 @@ function cargar(){
         merged.ventas = (merged.ventas||[]).map(v=>(v.metodo==='mp' && !v.origen) ? Object.assign({}, v, {origen:'mp'}) : v);
         merged.v = 2;
       }
+      merged.productos = (merged.productos||[]).map(p=> p.iniTurno == null ? Object.assign({}, p, {iniTurno:p.cant}) : p);
       return merged;
     }
   }catch(e){}
@@ -428,7 +429,8 @@ function vStock(){
     const d = document.createElement('div');
     d.className = 'prodc' + (moviendoId === p.id ? ' moviendola' : '');
     d.dataset.pid = p.id;
-    const cls = p.cant<=0 ? 'cero' : p.cant<=3 ? 'bajo' : '';
+    const dif = +(p.cant - (p.iniTurno == null ? p.cant : p.iniTurno)).toFixed(2);
+    const cls = dif > 0 ? 'subio' : dif < 0 ? 'bajo' : '';
     d.innerHTML = `
       <div class="info" data-edit="${p.id}">
         <div class="nom">${esc(p.nombre)}</div>
@@ -500,7 +502,7 @@ $('#mProdGuardar').onclick = ()=>{
   if (editProdId){
     Object.assign(db.productos.find(x=>x.id===editProdId), {nombre:n, cant:c, precio:pr});
   } else {
-    db.productos.push({id:uid(), nombre:n, cant:c, precio:pr});
+    db.productos.push({id:uid(), nombre:n, cant:c, precio:pr, iniTurno:c});
   }
   guardar(); $('#mProd').close(); render(); toast('Guardado ✓');
 };
@@ -817,6 +819,7 @@ $('#mCerrarOk').onclick = ()=>{
     dif: totalRend()-totalTurno(), ventasN:delDia().length});
   db.ventas = db.ventas.filter(v=>v.fecha !== hoyISO());
   db.rendicion = {pesos:0, ctacte:0, tarjetas:0, gastos:0, retiros:0};
+  db.productos.forEach(p=>{ p.iniTurno = p.cant; });
   arrastrarLecturas();
   guardar(); $('#mCerrar').close(); render(); toast('Turno cerrado ✓');
 };
@@ -886,6 +889,7 @@ function esc(s){
 }
 
 db = cargar();
+db.productos.forEach(p=>{ if (p.iniTurno == null) p.iniTurno = p.cant; });
 render();
 </script>
 </body>
