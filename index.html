@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Stock Shell — Planilla de turno</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <style>
   :root{
     --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
@@ -80,6 +83,11 @@
     background:#0b1220; color:var(--ambar); font-size:16px; font-weight:800; cursor:pointer; flex-shrink:0;
   }
   .editprecio:active{filter:brightness(1.4)}
+  .prodc{touch-action:pan-y; -webkit-touch-callout:none}
+  .prodc.dragging{
+    position:relative; z-index:30; opacity:.95;
+    box-shadow:0 10px 30px rgba(0,0,0,.65); background:#334155;
+  }
   .plus:active,.minus:active{filter:brightness(1.25)}
 
   input,select{
@@ -394,7 +402,7 @@ function vStock(){
     <div class="card">
       <div class="row between">
         <h2>📦 Stock <span class="mut" style="text-transform:none">(${db.productos.length})</span></h2>
-        <span class="mut" style="font-size:12px">tocá el nombre para editar</span>
+        <span class="mut" style="font-size:12px">tocá el nombre para editar · mantené apretado para mover ↑↓</span>
       </div>
       <div class="row between" style="background:#0b1220; border-radius:10px; padding:10px 12px; margin-bottom:10px">
         <span class="mut">Valor total del stock</span><b class="verde" style="font-size:17px" id="valStockLista"></b>
@@ -408,6 +416,7 @@ function vStock(){
   db.productos.forEach(p=>{
     const d = document.createElement('div');
     d.className = 'prodc';
+    d.dataset.pid = p.id;
     const cls = p.cant<=0 ? 'cero' : p.cant<=3 ? 'bajo' : '';
     d.innerHTML = `
       <div class="info" data-edit="${p.id}">
@@ -427,6 +436,7 @@ function vStock(){
       p.precio = num(v); guardar(); render(); toast('Precio guardado ✓');
     };
     cont.appendChild(d);
+    attachDrag(d);
   });
 }
 
@@ -732,6 +742,86 @@ function backup(){
   a.href = URL.createObjectURL(new Blob([JSON.stringify(db,null,2)], {type:'application/json'}));
   a.download = 'backup_stockshell_' + hoyISO() + '.json';
   a.click();
+}
+
+/* ---------- reordenar con mantener apretado ---------- */
+let skipClick = false;
+
+function persistOrder(){
+  const cont = $('#listaProd2');
+  if (!cont) return;
+  const ids = [...cont.children].map(r=>r.dataset.pid);
+  db.productos.sort((a,b)=>ids.indexOf(a.id) - ids.indexOf(b.id));
+  guardar();
+}
+
+function attachDrag(row){
+  let timer = null, dragging = false, startY = 0;
+
+  row.addEventListener('touchstart', e => {
+    if (e.target.closest('button')) return;
+    startY = e.touches[0].clientY;
+    timer = setTimeout(()=>{
+      dragging = true;
+      skipClick = true;
+      row.classList.add('dragging');
+      if (navigator.vibrate) navigator.vibrate(35);
+    }, 350);
+  }, {passive:true});
+
+  row.addEventListener('touchmove', e => {
+    if (!dragging){
+      if (Math.abs(e.touches[0].clientY - startY) > 12) clearTimeout(timer);
+      return;
+    }
+    e.preventDefault();
+    let offset = e.touches[0].clientY - startY;
+    row.style.transform = 'translateY(' + offset + 'px)';
+
+    const arriba = row.previousElementSibling, abajo = row.nextElementSibling;
+    if (arriba && offset < 0 && row.getBoundingClientRect().top < arriba.getBoundingClientRect().top + arriba.offsetHeight*0.5){
+      const salto = row.getBoundingClientRect().top;
+      arriba.after(row);
+      startY += row.getBoundingClientRect().top - salto;
+      offset = e.touches[0].clientY - startY;
+      row.style.transform = 'translateY(' + offset + 'px)';
+    } else if (abajo && offset > 0 && row.getBoundingClientRect().bottom > abajo.getBoundingClientRect().top + abajo.offsetHeight*0.5){
+      const salto = row.getBoundingClientRect().top;
+      row.after(abajo);
+      startY += row.getBoundingClientRect().top - salto;
+      offset = e.touches[0].clientY - startY;
+      row.style.transform = 'translateY(' + offset + 'px)';
+    }
+
+    const y = e.touches[0].clientY;
+    if (y < 90){ window.scrollBy(0,-10); startY += 10; }
+    else if (y > window.innerHeight - 90){ window.scrollBy(0,10); startY -= 10; }
+  }, {passive:false});
+
+  const soltar = () => {
+    clearTimeout(timer);
+    if (dragging){
+      dragging = false;
+      row.classList.remove('dragging');
+      row.style.transform = '';
+      persistOrder();
+      setTimeout(()=>{ skipClick = false; }, 350);
+    }
+  };
+  row.addEventListener('touchend', soltar);
+  row.addEventListener('touchcancel', soltar);
+  row.addEventListener('contextmenu', e => { if (dragging) e.preventDefault(); });
+}
+
+const _abrirProd = abrirProd;
+abrirProd = function(id){
+  if (skipClick) return;
+  _abrirProd(id);
+};
+
+/* ---------- service worker (para "Instalar aplicación" / APK) ---------- */
+if ('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
 
 function esc(s){
