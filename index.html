@@ -83,17 +83,11 @@
     background:#0b1220; color:var(--ambar); font-size:16px; font-weight:800; cursor:pointer; flex-shrink:0;
   }
   .editprecio:active{filter:brightness(1.4)}
-  .prodc{touch-action:pan-y; -webkit-touch-callout:none}
+  .prodc{touch-action:none; -webkit-touch-callout:none}
   .prodc.dragging{
     position:relative; z-index:30; opacity:.95;
     box-shadow:0 10px 30px rgba(0,0,0,.65); background:#334155;
   }
-  .grip{
-    width:30px; height:44px; border:none; background:none; color:var(--mut);
-    font-size:22px; font-weight:800; cursor:grab; flex-shrink:0; padding:0;
-    touch-action:none;
-  }
-  .grip:active{color:#7dd3fc}
   .plus:active,.minus:active{filter:brightness(1.25)}
 
   input,select{
@@ -408,7 +402,7 @@ function vStock(){
     <div class="card">
       <div class="row between">
         <h2>📦 Stock <span class="mut" style="text-transform:none">(${db.productos.length})</span></h2>
-        <span class="mut" style="font-size:12px">tocá el nombre para editar · arrastrá con ≡ para ordenar</span>
+        <span class="mut" style="font-size:12px">tocá el nombre para editar · mantené apretado y arrastrá para ordenar ↑↓</span>
       </div>
       <div class="row between" style="background:#0b1220; border-radius:10px; padding:10px 12px; margin-bottom:10px">
         <span class="mut">Valor total del stock</span><b class="verde" style="font-size:17px" id="valStockLista"></b>
@@ -425,7 +419,6 @@ function vStock(){
     d.dataset.pid = p.id;
     const cls = p.cant<=0 ? 'cero' : p.cant<=3 ? 'bajo' : '';
     d.innerHTML = `
-      <button class="grip" data-grip aria-label="mantener y arrastrar">≡</button>
       <div class="info" data-edit="${p.id}">
         <div class="nom">${esc(p.nombre)}</div>
         <div class="pre">${p.precio>0 ? fmt(p.precio)+' c/u · Total '+fmt(p.cant*p.precio) : 'tocá $ para poner el precio'}</div>
@@ -751,7 +744,7 @@ function backup(){
   a.click();
 }
 
-/* ---------- reordenar con mantener apretado ---------- */
+/* ---------- reordenar: mantener apretado y arrastrar ---------- */
 let skipClick = false;
 
 function persistOrder(){
@@ -763,76 +756,90 @@ function persistOrder(){
 }
 
 function attachDrag(row){
-  let timer = null, dragging = false, ancla = 0, ultimoY = 0;
+  let timer = null, dragging = false, preparado = false;
+  let anclaY = 0, scrollInicio = 0, lastY = 0, lastT = 0, vel = 0, movio = false;
 
-  const activar = y => {
-    ancla = y;
+  const activar = () => {
+    anclaY = lastY;
     dragging = true;
     skipClick = true;
     row.classList.add('dragging');
-    if (navigator.vibrate) navigator.vibrate(35);
+    if (navigator.vibrate) navigator.vibrate(40);
   };
 
-  const grip = row.querySelector('[data-grip]');
-  if (grip){
-    grip.addEventListener('touchstart', e => {
-      e.stopPropagation();
-      activar(e.touches[0].clientY);
-    }, {passive:true});
-    grip.addEventListener('touchend', soltar);
-    grip.addEventListener('touchcancel', soltar);
-  }
-
   row.addEventListener('touchstart', e => {
-    if (e.target.closest('button')) return;
-    ultimoY = e.touches[0].clientY;
-    ancla = ultimoY;
-    timer = setTimeout(()=>activar(ultimoY), 300);
+    if (e.target.closest('button')){ preparado = false; return; }
+    preparado = true;
+    const y = e.touches[0].clientY;
+    lastY = y; anclaY = y; scrollInicio = window.scrollY;
+    vel = 0; movio = false; lastT = performance.now();
+    clearTimeout(timer);
+    timer = setTimeout(activar, 300);
   }, {passive:true});
 
   row.addEventListener('touchmove', e => {
+    if (!preparado) return;
+    e.preventDefault();
     const y = e.touches[0].clientY;
-    ultimoY = y;
+    const ahora = performance.now();
+    const dt = Math.max(1, ahora - lastT);
+    vel = 0.7*vel + 0.3*((lastY - y)/dt);
+    lastT = ahora; lastY = y;
+    if (Math.abs(y - anclaY) > 8) movio = true;
+
     if (!dragging){
-      if (Math.abs(y - ancla) > 25) clearTimeout(timer);
+      if (Math.abs(y - anclaY) > 25) clearTimeout(timer);
+      window.scrollTo(0, scrollInicio + (anclaY - y));
       return;
     }
-    e.preventDefault();
-    let offset = y - ancla;
+
+    let offset = y - anclaY;
     row.style.transform = 'translateY(' + offset + 'px)';
 
     const arriba = row.previousElementSibling, abajo = row.nextElementSibling;
     if (arriba && offset < 0 && row.getBoundingClientRect().top < arriba.getBoundingClientRect().top + arriba.offsetHeight*0.45){
       const salto = row.getBoundingClientRect().top;
       arriba.after(row);
-      ancla += row.getBoundingClientRect().top - salto;
-      offset = y - ancla;
+      anclaY += row.getBoundingClientRect().top - salto;
+      offset = y - anclaY;
       row.style.transform = 'translateY(' + offset + 'px)';
     } else if (abajo && offset > 0 && row.getBoundingClientRect().bottom > abajo.getBoundingClientRect().top + abajo.offsetHeight*0.45){
       const salto = row.getBoundingClientRect().top;
       row.after(abajo);
-      ancla += row.getBoundingClientRect().top - salto;
-      offset = y - ancla;
+      anclaY += row.getBoundingClientRect().top - salto;
+      offset = y - anclaY;
       row.style.transform = 'translateY(' + offset + 'px)';
     }
 
-    if (y < 90){ window.scrollBy(0,-10); ancla += 10; }
-    else if (y > window.innerHeight - 90){ window.scrollBy(0,10); ancla -= 10; }
+    if (y < 90){ window.scrollBy(0,-12); anclaY += 12; }
+    else if (y > window.innerHeight - 90){ window.scrollBy(0,12); anclaY -= 12; }
   }, {passive:false});
 
   function soltar(){
     clearTimeout(timer);
+    preparado = false;
     if (dragging){
       dragging = false;
       row.classList.remove('dragging');
       row.style.transform = '';
       persistOrder();
       setTimeout(()=>{ skipClick = false; }, 350);
+      return;
+    }
+    if (movio && Math.abs(vel) > 0.15){
+      let v = vel * 16;
+      const inercia = () => {
+        if (Math.abs(v) < 1) return;
+        window.scrollBy(0, v);
+        v *= 0.94;
+        requestAnimationFrame(inercia);
+      };
+      inercia();
     }
   }
   row.addEventListener('touchend', soltar);
   row.addEventListener('touchcancel', soltar);
-  row.addEventListener('contextmenu', e => { if (dragging) e.preventDefault(); });
+  row.addEventListener('contextmenu', e => e.preventDefault());
 }
 
 const _abrirProd = abrirProd;
