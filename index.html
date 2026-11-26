@@ -75,6 +75,11 @@
     flex-shrink:0;
   }
   .plus{background:var(--verde)} .minus{background:var(--rojo)}
+  .editprecio{
+    width:38px; height:38px; border-radius:10px; border:1px solid var(--ambar);
+    background:#0b1220; color:var(--ambar); font-size:16px; font-weight:800; cursor:pointer; flex-shrink:0;
+  }
+  .editprecio:active{filter:brightness(1.4)}
   .plus:active,.minus:active{filter:brightness(1.25)}
 
   input,select{
@@ -317,13 +322,10 @@ function base(){
       P('Hielo x bolsa', 75),
       P('Gas x garrafa', 19),
     ],
-    preciosComb: {'Nafta Súper':2939, 'Nafta Eco':0, 'Gas Oil':2949, 'G-Euro':0},
+    preciosComb: {'Nafta Súper':2939, 'Gas Oil':2949},
     bombas: [
       {id:'S1', tipo:'Nafta Súper', ini:204654.18, fin:null},
-      {id:'S2', tipo:'Nafta Eco',   ini:null,      fin:null},
       {id:'S3', tipo:'Gas Oil',     ini:635793.40, fin:null},
-      {id:'S5', tipo:'Gas Oil',     ini:137116.90, fin:null},
-      {id:'S6', tipo:'G-Euro',      ini:11538.42,  fin:null},
     ],
     ventas: [],
     comisionMP: 3.19,
@@ -334,7 +336,15 @@ function base(){
 function cargar(){
   try{
     const d = JSON.parse(localStorage.getItem(LS));
-    if (d && Array.isArray(d.productos)) return Object.assign(base(), d);
+    if (d && Array.isArray(d.productos)){
+      const b = base();
+      const merged = Object.assign(b, d);
+      merged.bombas = merged.bombas.filter(x=>b.bombas.some(bb=>bb.id===x.id));
+      if (!merged.bombas.length) merged.bombas = b.bombas;
+      merged.preciosComb = Object.assign({}, b.preciosComb, merged.preciosComb);
+      TIPOS_COMB.forEach(t=>{ if (!(t in merged.preciosComb)) merged.preciosComb[t]=0; });
+      return merged;
+    }
   }catch(e){}
   return base();
 }
@@ -386,9 +396,14 @@ function vStock(){
         <h2>📦 Stock <span class="mut" style="text-transform:none">(${db.productos.length})</span></h2>
         <span class="mut" style="font-size:12px">tocá el nombre para editar</span>
       </div>
+      <div class="row between" style="background:#0b1220; border-radius:10px; padding:10px 12px; margin-bottom:10px">
+        <span class="mut">Valor total del stock</span><b class="verde" style="font-size:17px" id="valStockLista"></b>
+      </div>
       <div id="listaProd2"></div>
     </div>
     <button class="btn ok grande" onclick="abrirProd()">+ Agregar producto</button>`;
+  const valStock = db.productos.reduce((a,p)=>a + p.cant*p.precio, 0);
+  $('#valStockLista').textContent = fmt(valStock);
   const cont = $('#listaProd2');
   db.productos.forEach(p=>{
     const d = document.createElement('div');
@@ -397,14 +412,20 @@ function vStock(){
     d.innerHTML = `
       <div class="info" data-edit="${p.id}">
         <div class="nom">${esc(p.nombre)}</div>
-        <div class="pre">${p.precio>0 ? fmt(p.precio)+' c/u' : 'sin precio'}</div>
+        <div class="pre">${p.precio>0 ? fmt(p.precio)+' c/u · Total '+fmt(p.cant*p.precio) : 'tocá $ para poner el precio'}</div>
       </div>
       <div class="qty ${cls}">${fmtN(p.cant)}</div>
+      <button class="editprecio" data-pprecio="${p.id}" aria-label="cambiar precio">$</button>
       <button class="minus" aria-label="restar">−</button>
       <button class="plus"  aria-label="sumar">+</button>`;
     d.querySelector('.plus').onclick  = ()=>{ p.cant = +(p.cant+1).toFixed(2); guardar(); render(); };
     d.querySelector('.minus').onclick = ()=>{ p.cant = Math.max(0, +(p.cant-1).toFixed(2)); guardar(); render(); };
     d.querySelector('[data-edit]').onclick = ()=>abrirProd(p.id);
+    d.querySelector('[data-pprecio]').onclick = ()=>{
+      const v = prompt('Precio unitario de "'+p.nombre+'" ($):', p.precio>0?String(p.precio).replace('.',','):'');
+      if (v===null) return;
+      p.precio = num(v); guardar(); render(); toast('Precio guardado ✓');
+    };
     cont.appendChild(d);
   });
 }
@@ -509,7 +530,7 @@ $('#mVentaGuardar').onclick = ()=>{
 };
 
 /* ---------- COMBUSTIBLE ---------- */
-const TIPOS_COMB = ['Nafta Súper','Nafta Eco','Gas Oil','G-Euro'];
+const TIPOS_COMB = ['Nafta Súper','Gas Oil'];
 
 function vComb(){
   const cargas = delDia().filter(v=>v.comb).reduce((a,v)=>{ a[v.desc]=(a[v.desc]||0)+v.cant; return a; },{});
@@ -523,6 +544,7 @@ function vComb(){
     </div>
     <div class="card">
       <h2>🔢 Bombas (lecturas del turno)</h2>
+      <p class="mut" style="font-size:12.5px; margin:0 0 10px">Al arrancar el día queda la lectura final del día anterior. Cargá la lectura final al cerrar y la app calcula litros y plata.</p>
       ${db.bombas.map(b=>`
         <div class="bomba">
           <div class="tit">Bomba ${b.id} <span class="mut" style="font-weight:600">· ${b.tipo}</span></div>
@@ -533,6 +555,7 @@ function vComb(){
           <div class="litros" id="bomRes_${b.id}"></div>
         </div>
       `).join('')}
+      <button class="btn azul grande" onclick="nuevoDiaBombas()">🔄 Arrancar nuevo día (lectura final → inicial)</button>
     </div>
     <div class="card">
       <h2>Cargas sueltas de hoy</h2>
@@ -540,8 +563,8 @@ function vComb(){
       <button class="btn ambar grande" style="margin-top:12px" onclick="abrirComb()">+ Registrar carga suelta</button>
     </div>
     <div class="card">
-      <div class="row between"><b>Total combustible</b><b class="big ambar" style="font-size:22px">${fmt(totalComb())}</b></div>
-      <div class="row between mut" style="margin-top:4px"><span>&nbsp;&nbsp;por bombas (lecturas)</span><span>${fmt(totalBombas())}</span></div>
+      <div class="row between"><b>Total combustible</b><b class="big ambar" style="font-size:22px" id="totComb">${fmt(totalComb())}</b></div>
+      <div class="row between mut" style="margin-top:4px"><span>&nbsp;&nbsp;por bombas (lecturas)</span><span id="combBombas">${fmt(totalBombas())}</span></div>
       <div class="row between mut"><span>&nbsp;&nbsp;por cargas sueltas</span><span>${fmt(combCargas())}</span></div>
     </div>`;
   $$('[data-precio]').forEach(inp=>{
@@ -566,7 +589,25 @@ function pintarBomba(b){
   if (b.fin==null || b.ini==null || lit<=0){ el.textContent = '—'; return; }
   el.innerHTML = `${fmtN(lit)} L × ${fmt(db.preciosComb[b.tipo]||0)} = <b class="ambar">${fmt(lit*(db.preciosComb[b.tipo]||0))}</b>`;
 }
-function refrescarBombas(){ db.bombas.forEach(pintarBomba); }
+function refrescarBombas(){
+  db.bombas.forEach(pintarBomba);
+  const tc = $('#totComb'), tb = $('#combBombas');
+  if (tc) tc.textContent = fmt(totalComb());
+  if (tb) tb.textContent = fmt(totalBombas());
+}
+function arrastrarLecturas(){
+  let hecho = 0;
+  db.bombas.forEach(b=>{
+    if (b.fin!=null && num(b.fin)>=num(b.ini)){ b.ini = num(b.fin); hecho++; }
+    b.fin = null;
+  });
+  return hecho;
+}
+function nuevoDiaBombas(){
+  const hecho = arrastrarLecturas();
+  guardar(); render();
+  toast(hecho ? 'Listo para el nuevo día ✓' : 'No había lecturas finales cargadas');
+}
 
 function abrirComb(){
   metodoComb = 'efectivo';
@@ -674,6 +715,7 @@ $('#mCerrarOk').onclick = ()=>{
     dif: totalRend()-totalTurno(), ventasN:delDia().length});
   db.ventas = db.ventas.filter(v=>v.fecha !== hoyISO());
   db.rendicion = {pesos:0, ctacte:0, tarjetas:0, gastos:0, retiros:0};
+  arrastrarLecturas();
   guardar(); $('#mCerrar').close(); render(); toast('Turno cerrado ✓');
 };
 function exportar(){
