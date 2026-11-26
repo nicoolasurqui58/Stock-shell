@@ -185,6 +185,7 @@
     </div>
   </div>
   <div class="acciones">
+    <button class="btn rojo" id="mProdEliminar" style="display:none">🗑 Eliminar</button>
     <button class="btn ghost" id="mProdCancelar">Cancelar</button>
     <button class="btn ok" id="mProdGuardar">Guardar</button>
   </div>
@@ -413,7 +414,7 @@ function vStock(){
         <h2>📦 Stock <span class="mut" style="text-transform:none">(${db.productos.length})</span></h2>
         <span class="mut" style="font-size:12px">tocá el nombre para editar · mantené apretado un producto para moverlo</span>
       </div>
-      ${moviendoId ? `<div class="bannerMover"><span>✋ Moviendo: ${esc((db.productos.find(p=>p.id===moviendoId)||{}).nombre||'')} — tocá la fila donde lo querés</span><button onclick="cancelarMover()">Cancelar</button></div>` : ''}
+      ${moviendoId ? `<div class="bannerMover"><span>✋ Moviendo: ${esc((db.productos.find(p=>p.id===moviendoId)||{}).nombre||'')} — tocá la fila donde lo querés</span><button onclick="cancelarMover()">Cancelar</button><button style="background:var(--rojo)" onclick="eliminarMover()">🗑 Eliminar</button></div>` : ''}
       <div class="row between" style="background:#0b1220; border-radius:10px; padding:10px 12px; margin-bottom:10px">
         <span class="mut">Valor total del stock</span><b class="verde" style="font-size:17px" id="valStockLista"></b>
       </div>
@@ -478,10 +479,20 @@ function abrirProd(id){
   $('#fNombre').value = p ? p.nombre : '';
   $('#fCant').value   = p ? p.cant : '';
   $('#fPrecio').value = p && p.precio ? String(p.precio).replace('.',',') : '';
+  $('#mProdEliminar').style.display = id ? '' : 'none';
   $('#mProd').showModal();
   setTimeout(()=>$('#fNombre').focus(), 50);
 }
 $('#mProdCancelar').onclick = ()=>$('#mProd').close();
+$('#mProdEliminar').onclick = ()=>{
+  const p = db.productos.find(x=>x.id===editProdId);
+  if (!p) return;
+  if (!confirm('¿Eliminar "'+p.nombre+'" del stock?')) return;
+  db.productos = db.productos.filter(x=>x.id!==editProdId);
+  editProdId = null;
+  $('#mProd').close();
+  guardar(); render(); toast('Producto eliminado ✓');
+};
 $('#mProdGuardar').onclick = ()=>{
   const n = $('#fNombre').value.trim();
   if (!n){ toast('Poné un nombre'); return; }
@@ -855,6 +866,15 @@ function colocarMover(idDest){
   if (movio) toast('Orden guardado ✓');
 }
 function cancelarMover(){ moviendoId = null; render(); }
+function eliminarMover(){
+  if (!moviendoId) return;
+  const p = db.productos.find(x=>x.id===moviendoId);
+  if (!p){ moviendoId = null; render(); return; }
+  if (!confirm('¿Eliminar "'+p.nombre+'" del stock?')){ moviendoId = null; render(); return; }
+  db.productos = db.productos.filter(x=>x.id!==moviendoId);
+  moviendoId = null;
+  guardar(); render(); toast('Producto eliminado ✓');
+}
 
 /* ---------- service worker (para "Instalar aplicación" / APK) ---------- */
 if ('serviceWorker' in navigator){
