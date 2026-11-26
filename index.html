@@ -47,7 +47,7 @@
     padding-bottom:env(safe-area-inset-bottom);
   }
   .tabs button{
-    flex:1; background:none; border:none; color:var(--mut); font-size:11px; font-weight:600;
+    flex:1; background:none; border:none; color:var(--mut); font-size:10px; font-weight:600;
     padding:8px 0 10px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer;
   }
   .tabs button span.ico{font-size:22px; line-height:1}
@@ -135,6 +135,7 @@
   .resline:last-child{border-bottom:none}
   .resline b{font-size:15px}
   .resline input{width:120px; text-align:right; padding:7px 10px; font-size:15px}
+  .pesos{color:var(--mut); font-weight:800; font-size:15px}
   .toast{
     position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom)); transform:translateX(-50%);
     background:#052e16; color:#86efac; border:1px solid #166534; padding:10px 20px; border-radius:99px;
@@ -160,6 +161,7 @@
 <nav class="tabs">
   <button data-v="stock" class="act"><span class="ico">📦</span>Stock</button>
   <button data-v="ventas"><span class="ico">🛒</span>Ventas</button>
+  <button data-v="mp"><span class="ico">🟣</span>Mercado Pago</button>
   <button data-v="comb"><span class="ico">⛽</span>Combustible</button>
   <button data-v="dia"><span class="ico">💰</span>Rendición</button>
 </nav>
@@ -392,7 +394,7 @@ function render(){
     const d = new Date();
     return `${FECHAS[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]} — ${totalDia()>0 ? 'Vendido: '+fmt(totalDia()) : 'sin ventas todavía'}`;
   })();
-  ({stock:vStock, ventas:vVentas, comb:vComb, dia:vDia})[vistaActual]();
+  ({stock:vStock, ventas:vVentas, mp:vMP, comb:vComb, dia:vDia})[vistaActual]();
 }
 
 /* ---------- STOCK ---------- */
@@ -539,6 +541,56 @@ $('#mVentaGuardar').onclick = ()=>{
   guardar(); $('#mVenta').close(); render(); toast('Venta registrada ✓');
 };
 
+/* ---------- MERCADO PAGO ---------- */
+function vMP(){
+  const mpv = delDia().filter(v=>v.metodo==='mp').slice().reverse();
+  const bruto = mpv.reduce((a,v)=>a+v.total,0);
+  $('#vista').innerHTML = `
+    <div class="card">
+      <h2>🟣 Agregar transacción de Mercado Pago</h2>
+      <label>Monto cobrado ($)</label>
+      <input id="mpMonto" type="text" inputmode="decimal" placeholder="0" style="font-size:22px; font-weight:800; padding:14px">
+      <label>Detalle (opcional)</label>
+      <input id="mpDetalle" placeholder="Ej: nafta de fulano, aceite…" maxlength="60">
+      <button class="btn violeta grande" style="margin-top:12px" onclick="agregarMP()">+ Agregar</button>
+    </div>
+    <div class="card">
+      <h2>Transacciones de hoy <span class="mut" style="text-transform:none">(${mpv.length})</span></h2>
+      <div id="listaMP">${mpv.length ? '' : '<div class="vacío">Todavía no cargaste cobros por MP en este turno.</div>'}</div>
+      <div class="row between" style="border-top:1px solid var(--line); margin-top:8px; padding-top:10px">
+        <span class="mut">Bruto MP</span><b class="violeta" style="font-size:17px" id="mpBruto">${fmt(bruto)}</b>
+      </div>
+      <div class="row between mut" style="font-size:12.5px"><span>comisión ${String(db.comisionMP).replace('.',',')}%</span><span>-${fmt(bruto*db.comisionMP/100)}</span></div>
+      <div class="row between"><span class="mut">Neto que te queda</span><b class="verde" style="font-size:17px">${fmt(bruto*(1-db.comisionMP/100))}</b></div>
+    </div>`;
+  $('#mpMonto').addEventListener('input', e=>{ e.target.value = fmtMiles(e.target.value); });
+  const c = $('#listaMP');
+  mpv.forEach(v=>{
+    const d = document.createElement('div');
+    d.className = 'vta';
+    d.innerHTML = `
+      <span class="mut" style="font-size:12px; min-width:38px">${v.hora||''}</span>
+      <div class="grow" style="font-weight:700; font-size:14.5px">${esc(v.desc)}</div>
+      <b style="text-align:right">${fmt(v.total)}</b>
+      <button class="del" title="borrar">✕</button>`;
+    d.querySelector('.del').onclick = ()=>{
+      if (!confirm('¿Borrar esta transacción?')) return;
+      db.ventas = db.ventas.filter(x=>x.id!==v.id);
+      guardar(); render();
+    };
+    c.appendChild(d);
+  });
+}
+
+function agregarMP(){
+  const monto = num($('#mpMonto').value);
+  if (monto<=0){ toast('Poné el monto'); return; }
+  const desc = $('#mpDetalle').value.trim() || 'Mercado Pago';
+  db.ventas.push({id:uid(), fecha:hoyISO(), hora:new Date().toTimeString().slice(0,5),
+    desc, cant:1, unit:monto, total:+monto.toFixed(2), metodo:'mp', factura:false, prodId:null, comb:false});
+  guardar(); render(); toast('Cobro MP registrado ✓');
+}
+
 /* ---------- COMBUSTIBLE ---------- */
 const TIPOS_COMB = ['Nafta Súper','Gas Oil'];
 
@@ -654,11 +706,11 @@ function vDia(){
   $('#vista').innerHTML = `
     <div class="card">
       <h2>🧾 Rendición de turno</h2>
-      <div class="resline"><span class="mut">💵 Pesos</span><input type="text" inputmode="decimal" data-rend="pesos" value="${String(r.pesos).replace('.',',')}" placeholder="0"></div>
-      <div class="resline"><span class="mut">🏦 Cta. cte.</span><input type="text" inputmode="decimal" data-rend="ctacte" value="${String(r.ctacte).replace('.',',')}" placeholder="0"></div>
-      <div class="resline"><span class="mut">💳 Tarjetas</span><input type="text" inputmode="decimal" data-rend="tarjetas" value="${String(r.tarjetas).replace('.',',')}" placeholder="0"></div>
-      <div class="resline"><span class="mut">🧾 Gastos</span><input type="text" inputmode="decimal" data-rend="gastos" value="${String(r.gastos).replace('.',',')}" placeholder="0"></div>
-      <div class="resline"><span class="mut">↩️ Retiros</span><input type="text" inputmode="decimal" data-rend="retiros" value="${String(r.retiros).replace('.',',')}" placeholder="0"></div>
+      <div class="resline"><span class="mut">💵 Pesos</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="pesos" value="${r.pesos ? fmtMiles(r.pesos) : ''}" placeholder="0"></div>
+      <div class="resline"><span class="mut">🏦 Cta. cte.</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="ctacte" value="${r.ctacte ? fmtMiles(r.ctacte) : ''}" placeholder="0"></div>
+      <div class="resline"><span class="mut">💳 Tarjetas</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="tarjetas" value="${r.tarjetas ? fmtMiles(r.tarjetas) : ''}" placeholder="0"></div>
+      <div class="resline"><span class="mut">🧾 Gastos</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="gastos" value="${r.gastos ? fmtMiles(r.gastos) : ''}" placeholder="0"></div>
+      <div class="resline"><span class="mut">↩️ Retiros</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="retiros" value="${r.retiros ? fmtMiles(r.retiros) : ''}" placeholder="0"></div>
       <div class="row between" style="border-top:1px solid var(--line); margin-top:8px; padding-top:10px">
         <b>TOTAL CAJA</b><b class="big verde" style="font-size:22px" id="totCaja">${fmt(caja)}</b>
       </div>
@@ -695,6 +747,7 @@ function vDia(){
     inp.addEventListener('input', ()=>{
       db.rendicion[inp.dataset.rend] = num(inp.value);
       guardar();
+      inp.value = fmtMiles(inp.value);
       const c = totalRend(), v = totalTurno(), dd = c - v;
       $('#totCaja').textContent = fmt(c);
       $('#lineaDif').innerHTML = `<span class="${dd<0?'rojo':'verde'}"><b>${dd<0?'FALTANTE':'SOBRANTE'}</b></span><b class="${dd<0?'rojo':'verde'}">${fmt(Math.abs(dd))}</b>`;
@@ -744,8 +797,18 @@ function backup(){
   a.click();
 }
 
-/* ---------- reordenar: mantener apretado y arrastrar ---------- */
+/* ---------- reordenar: mantener apretado y arrastrar (pointer events) ---------- */
 let skipClick = false;
+
+function fmtMiles(v){
+  const n = num(v);
+  if (!n) return '';
+  const neg = n < 0 ? '-' : '';
+  const [ent, dec] = Math.abs(n).toFixed(2).split('.');
+  const entG = ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const decL = dec.replace(/0+$/,'');
+  return neg + entG + (decL ? ',' + decL : '');
+}
 
 function persistOrder(){
   const cont = $('#listaProd2');
@@ -756,44 +819,29 @@ function persistOrder(){
 }
 
 function attachDrag(row){
-  let timer = null, dragging = false, preparado = false;
-  let anclaY = 0, scrollInicio = 0, lastY = 0, lastT = 0, vel = 0, movio = false;
+  let timer = null, activado = false, anclaY = 0, lastY = 0;
 
-  const activar = () => {
-    anclaY = lastY;
-    dragging = true;
-    skipClick = true;
-    row.classList.add('dragging');
-    if (navigator.vibrate) navigator.vibrate(40);
-  };
-
-  row.addEventListener('touchstart', e => {
-    if (e.target.closest('button')){ preparado = false; return; }
-    preparado = true;
-    const y = e.touches[0].clientY;
-    lastY = y; anclaY = y; scrollInicio = window.scrollY;
-    vel = 0; movio = false; lastT = performance.now();
+  row.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    activado = false;
+    anclaY = lastY = e.clientY;
+    try{ row.setPointerCapture(e.pointerId); }catch(err){}
     clearTimeout(timer);
-    timer = setTimeout(activar, 300);
-  }, {passive:true});
+    timer = setTimeout(()=>{
+      activado = true;
+      skipClick = true;
+      anclaY = lastY;
+      row.classList.add('dragging');
+      if (navigator.vibrate) navigator.vibrate(40);
+    }, 300);
+  });
 
-  row.addEventListener('touchmove', e => {
-    if (!preparado) return;
+  row.addEventListener('pointermove', e => {
+    lastY = e.clientY;
+    if (!activado) return;
     e.preventDefault();
-    const y = e.touches[0].clientY;
-    const ahora = performance.now();
-    const dt = Math.max(1, ahora - lastT);
-    vel = 0.7*vel + 0.3*((lastY - y)/dt);
-    lastT = ahora; lastY = y;
-    if (Math.abs(y - anclaY) > 8) movio = true;
-
-    if (!dragging){
-      if (Math.abs(y - anclaY) > 25) clearTimeout(timer);
-      window.scrollTo(0, scrollInicio + (anclaY - y));
-      return;
-    }
-
-    let offset = y - anclaY;
+    let offset = e.clientY - anclaY;
     row.style.transform = 'translateY(' + offset + 'px)';
 
     const arriba = row.previousElementSibling, abajo = row.nextElementSibling;
@@ -801,44 +849,32 @@ function attachDrag(row){
       const salto = row.getBoundingClientRect().top;
       arriba.after(row);
       anclaY += row.getBoundingClientRect().top - salto;
-      offset = y - anclaY;
+      offset = e.clientY - anclaY;
       row.style.transform = 'translateY(' + offset + 'px)';
     } else if (abajo && offset > 0 && row.getBoundingClientRect().bottom > abajo.getBoundingClientRect().top + abajo.offsetHeight*0.45){
       const salto = row.getBoundingClientRect().top;
       row.after(abajo);
       anclaY += row.getBoundingClientRect().top - salto;
-      offset = y - anclaY;
+      offset = e.clientY - anclaY;
       row.style.transform = 'translateY(' + offset + 'px)';
     }
 
-    if (y < 90){ window.scrollBy(0,-12); anclaY += 12; }
-    else if (y > window.innerHeight - 90){ window.scrollBy(0,12); anclaY -= 12; }
-  }, {passive:false});
+    if (e.clientY < 90){ window.scrollBy(0,-14); anclaY += 14; }
+    else if (e.clientY > window.innerHeight - 90){ window.scrollBy(0,14); anclaY -= 14; }
+  });
 
-  function soltar(){
+  const soltar = () => {
     clearTimeout(timer);
-    preparado = false;
-    if (dragging){
-      dragging = false;
+    if (activado){
+      activado = false;
       row.classList.remove('dragging');
       row.style.transform = '';
       persistOrder();
-      setTimeout(()=>{ skipClick = false; }, 350);
-      return;
+      setTimeout(()=>{ skipClick = false; }, 400);
     }
-    if (movio && Math.abs(vel) > 0.15){
-      let v = vel * 16;
-      const inercia = () => {
-        if (Math.abs(v) < 1) return;
-        window.scrollBy(0, v);
-        v *= 0.94;
-        requestAnimationFrame(inercia);
-      };
-      inercia();
-    }
-  }
-  row.addEventListener('touchend', soltar);
-  row.addEventListener('touchcancel', soltar);
+  };
+  row.addEventListener('pointerup', soltar);
+  row.addEventListener('pointercancel', soltar);
   row.addEventListener('contextmenu', e => e.preventDefault());
 }
 
