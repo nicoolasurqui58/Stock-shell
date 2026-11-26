@@ -338,6 +338,7 @@ function base(){
       {id:'S3', tipo:'Gas Oil',     ini:635793.40, fin:null},
     ],
     ventas: [],
+    v: 2,
     comisionMP: 3.19,
     rendicion: {pesos:0, ctacte:0, tarjetas:0, gastos:0, retiros:0},
     historial: []
@@ -353,7 +354,10 @@ function cargar(){
       if (!merged.bombas.length) merged.bombas = b.bombas;
       merged.preciosComb = Object.assign({}, b.preciosComb, merged.preciosComb);
       TIPOS_COMB.forEach(t=>{ if (!(t in merged.preciosComb)) merged.preciosComb[t]=0; });
-      merged.ventas = (merged.ventas||[]).map(v=>(v.metodo==='mp' && !v.origen) ? Object.assign({}, v, {origen:'mp'}) : v);
+      if (!d.v){
+        merged.ventas = (merged.ventas||[]).map(v=>(v.metodo==='mp' && !v.origen) ? Object.assign({}, v, {origen:'mp'}) : v);
+        merged.v = 2;
+      }
       return merged;
     }
   }catch(e){}
