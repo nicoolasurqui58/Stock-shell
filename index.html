@@ -206,6 +206,7 @@
   <label>Cobro</label>
   <div class="metodos">
     <button class="ef sel" id="vEf">💵 Efectivo</button>
+    <button class="mp" id="vMp">🟣 Mercado Pago</button>
   </div>
   <label class="chk"><input type="checkbox" id="vFactura"> Con factura (C/F)</label>
   <div class="row between" style="margin-top:12px; background:#0b1220; border-radius:10px; padding:12px">
@@ -467,12 +468,12 @@ $('#mProdGuardar').onclick = ()=>{
 /* ---------- VENTAS ---------- */
 function vVentas(){
   const tE = totalMet('efectivo'), tM = totalMet('mp');
-  const lista = delDia().filter(v=>v.metodo!=='mp').slice().reverse();
+  const lista = delDia().filter(v=>!v.origen).slice().reverse();
   $('#vista').innerHTML = `
     <div class="card">
       <div class="row between"><h2>🛒 Ventas del turno</h2><button class="btn ok" onclick="abrirVenta()">+ Venta</button></div>
       <div class="row between" style="margin:6px 0"><span class="mut">💵 Efectivo</span><b class="verde">${fmt(tE)}</b></div>
-      <div class="row between"><span class="mut">🟣 Mercado Pago (va en su pestaña)</span><b class="violeta">${fmt(tM)}</b></div>
+      <div class="row between"><span class="mut">🟣 Total Mercado Pago</span><b class="violeta">${fmt(tM)}</b></div>
       <div class="row between" style="border-top:1px solid var(--line); margin-top:8px; padding-top:10px">
         <b>TOTAL DEL TURNO</b><b class="big azul">${fmt(totalDia())}</b>
       </div>
@@ -490,7 +491,7 @@ function vVentas(){
         <div style="font-weight:700; font-size:14.5px">${esc(v.desc)}</div>
         <div class="mut" style="font-size:12px">${fmtN(v.cant)} × ${fmt(v.unit)}</div>
       </div>
-      <span class="tag ${v.comb?'nf':'ef'}">${v.comb?'⛽ EF':'EF'}${v.factura?' · C/F':''}</span>
+      <span class="tag ${v.comb?'nf':(v.metodo==='mp'?'mp':'ef')}">${v.comb?'⛽ '+(v.metodo==='mp'?'MP':'EF'):(v.metodo==='mp'?'MP':'EF')}${v.factura?' · C/F':''}</span>
       <b style="min-width:88px; text-align:right">${fmt(v.total)}</b>
       <button class="del" title="borrar">✕</button>`;
     d.querySelector('.del').onclick = ()=>{
@@ -510,7 +511,7 @@ function abrirVenta(){
   metodoVenta = 'efectivo';
   $('#vDesc').value = ''; $('#vCant').value = 1; $('#vPrecio').value = '';
   $('#vFactura').checked = false;
-  $('#vEf').classList.add('sel');
+  $('#vEf').classList.add('sel'); $('#vMp').classList.remove('sel');
   $('#listaProd').innerHTML = db.productos.map(p=>`<option value="${esc(p.nombre)}">`).join('');
   $('#mVenta').showModal();
   setTimeout(()=>$('#vDesc').focus(), 50);
@@ -522,7 +523,8 @@ $('#vDesc').addEventListener('change', ()=>{
 });
 function calcVta(){ $('#vTotal').textContent = fmt(num($('#vCant').value) * num($('#vPrecio').value)); }
 ['vCant','vPrecio'].forEach(id=>$('#'+id).addEventListener('input', calcVta));
-$('#vEf').onclick = ()=>{ metodoVenta='efectivo'; $('#vEf').classList.add('sel'); };
+$('#vEf').onclick = ()=>{ metodoVenta='efectivo'; $('#vEf').classList.add('sel'); $('#vMp').classList.remove('sel'); };
+$('#vMp').onclick = ()=>{ metodoVenta='mp'; $('#vMp').classList.add('sel'); $('#vEf').classList.remove('sel'); };
 $('#mVentaCancelar').onclick = ()=>$('#mVenta').close();
 $('#mVentaGuardar').onclick = ()=>{
   const desc = $('#vDesc').value.trim();
@@ -584,7 +586,7 @@ function agregarMP(){
   if (monto<=0){ toast('Poné el monto'); return; }
   const desc = $('#mpDetalle').value.trim() || 'Mercado Pago';
   db.ventas.push({id:uid(), fecha:hoyISO(), hora:new Date().toTimeString().slice(0,5),
-    desc, cant:1, unit:monto, total:+monto.toFixed(2), metodo:'mp', factura:false, prodId:null, comb:false});
+    desc, cant:1, unit:monto, total:+monto.toFixed(2), metodo:'mp', factura:false, prodId:null, comb:false, origen:'mp'});
   guardar(); render(); toast('Cobro MP registrado ✓');
 }
 
