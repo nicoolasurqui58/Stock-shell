@@ -773,6 +773,7 @@ function vDia(){
         <div class="resline"><span class="mut">↩️ Retiros</span><span class="mut">−${fmt(num(r.retiros))}</span></div>
         <div class="resline"><span>Debería haber en efectivo</span><b id="deberia">${fmt(deberiaEf())}</b></div>
         <div class="resline"><span class="mut">💵 Contado (Pesos)</span><b id="contado">${fmt(num(r.pesos))}</b></div>
+        <div class="resline"><span>Total recaudado (efectivo + MP)</span><b class="verde" id="totRecaudado">${fmt(num(r.pesos) + totalMet('mp'))}</b></div>
         <div class="resline" id="lineaDif"><span class="${dif<0?'rojo':'verde'}"><b>${dif<0?'FALTANTE':'SOBRANTE'}</b></span><b class="${dif<0?'rojo':'verde'}">${fmt(Math.abs(dif))}</b></div>
       </div>
     </div>
@@ -805,6 +806,7 @@ function vDia(){
       $('#totCaja').textContent = fmt(totalRend());
       $('#deberia').textContent = fmt(deberiaEf());
       $('#contado').textContent = fmt(num(db.rendicion.pesos));
+      $('#totRecaudado').textContent = fmt(num(db.rendicion.pesos) + totalMet('mp'));
       $('#lineaDif').innerHTML = `<span class="${dd<0?'rojo':'verde'}"><b>${dd<0?'FALTANTE':'SOBRANTE'}</b></span><b class="${dd<0?'rojo':'verde'}">${fmt(Math.abs(dd))}</b>`;
     });
   });
