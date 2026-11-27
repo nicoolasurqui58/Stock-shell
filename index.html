@@ -386,8 +386,12 @@ const totalVentSF = () => delDia().filter(v=>!v.factura).reduce((a,v)=>a+v.total
 const totalBombas = () => db.bombas.reduce((a,b)=>a + Math.max(0,(num(b.fin)-num(b.ini))) * (db.preciosComb[b.tipo]||0), 0);
 const totalComb   = () => combCargas() + totalBombas();
 const totalDia    = () => delDia().reduce((a,v)=>a+v.total,0);
-const totalRend   = () => { const r = db.rendicion; return num(r.pesos)+num(r.ctacte)+totalMet('mp')+num(r.gastos)+num(r.retiros); };
+const totalRend   = () => { const r = db.rendicion; return num(r.pesos)+num(r.ctacte)+num(r.gastos)+num(r.retiros); };
 const totalTurno  = () => totalDia() + totalBombas();
+const cobrosMPTot = () => delDia().filter(v=>v.origen==='mp').reduce((a,v)=>a+v.total,0);
+const totalDue    = () => totalTurno() - cobrosMPTot();
+const difTurno    = () => +((totalRend() + totalMet('mp') - totalDue()).toFixed(2));
+const deberiaEf   = () => +((totalDue() - totalMet('mp') - (totalRend() - num(db.rendicion.pesos))).toFixed(2));
 
 /* ---------- pestañas ---------- */
 let vistaActual = 'stock';
@@ -743,26 +747,32 @@ $('#mCombGuardar').onclick = ()=>{
 function vDia(){
   const r = db.rendicion;
   const tE = totalMet('efectivo'), tM = totalMet('mp');
-  const caja = totalRend(), ventas = totalTurno();
-  const dif = caja - ventas;
+  const caja = totalRend(), ventas = totalDue();
+  const dif = difTurno();
   const valStock = db.productos.reduce((a,p)=>a + p.cant*p.precio, 0);
   $('#vista').innerHTML = `
     <div class="card">
       <h2>🧾 Rendición de turno</h2>
       <div class="resline"><span class="mut">💵 Pesos</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="pesos" value="${r.pesos ? fmtMiles(r.pesos) : ''}" placeholder="0"></div>
       <div class="resline"><span class="mut">🏦 Cta. cte.</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="ctacte" value="${r.ctacte ? fmtMiles(r.ctacte) : ''}" placeholder="0"></div>
-      <div class="resline"><span class="mut">💳 Tarjetas (MP suma solo)</span><b class="violeta" id="autoTarjetas">${fmt(totalMet('mp'))}</b></div>
       <div class="resline"><span class="mut">🧾 Gastos</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="gastos" value="${r.gastos ? fmtMiles(r.gastos) : ''}" placeholder="0"></div>
       <div class="resline"><span class="mut">↩️ Retiros</span><span class="pesos">$</span><input type="text" inputmode="decimal" data-rend="retiros" value="${r.retiros ? fmtMiles(r.retiros) : ''}" placeholder="0"></div>
       <div class="row between" style="border-top:1px solid var(--line); margin-top:8px; padding-top:10px">
-        <b>TOTAL CAJA</b><b class="big verde" style="font-size:22px" id="totCaja">${fmt(caja)}</b>
+        <b>TOTAL EN MANO (contado)</b><b class="big verde" style="font-size:22px" id="totCaja">${fmt(caja)}</b>
       </div>
       <div class="subcard">
-        <div class="resline"><span class="mut">Venta C/F (con factura)</span><b>${fmt(totalVentCF())}</b></div>
-        <div class="resline"><span class="mut">Venta S/F (sin factura)</span><b>${fmt(totalVentSF())}</b></div>
-        <div class="resline"><span class="mut">⛽ Comb. (lecturas de bombas)</span><b class="ambar">${fmt(totalBombas())}</b></div>
-        <div class="resline"><span class="mut">&nbsp;&nbsp;· cargas sueltas (van en S/F)</span><span class="mut">${fmt(combCargas())}</span></div>
-        <div class="resline"><span>Ventas del turno</span><b class="azul">${fmt(totalTurno())}</b></div>
+        <div class="resline"><span class="mut">⛽ Combustible (bombas)</span><b class="ambar">${fmt(totalBombas())}</b></div>
+        <div class="resline"><span class="mut">&nbsp;&nbsp;· cargas sueltas</span><span class="mut">${fmt(combCargas())}</span></div>
+        <div class="resline"><span class="mut">🛒 Ventas (productos)</span><b>${fmt(totalVentCF()+totalVentSF()-combCargas()-cobrosMPTot())}</b></div>
+        <div class="resline"><span>Total del turno (combustible + ventas)</span><b class="azul">${fmt(totalDue())}</b></div>
+      </div>
+      <div class="subcard">
+        <div class="resline"><span class="mut">💳 Tarjetas (MP suma solo)</span><b class="violeta" id="autoTarjetas">−${fmt(totalMet('mp'))}</b></div>
+        <div class="resline"><span class="mut">🏦 Cta. cte.</span><span class="mut">−${fmt(num(r.ctacte))}</span></div>
+        <div class="resline"><span class="mut">🧾 Gastos</span><span class="mut">−${fmt(num(r.gastos))}</span></div>
+        <div class="resline"><span class="mut">↩️ Retiros</span><span class="mut">−${fmt(num(r.retiros))}</span></div>
+        <div class="resline"><span>Debería haber en efectivo</span><b id="deberia">${fmt(deberiaEf())}</b></div>
+        <div class="resline"><span class="mut">💵 Contado (Pesos)</span><b id="contado">${fmt(num(r.pesos))}</b></div>
         <div class="resline" id="lineaDif"><span class="${dif<0?'rojo':'verde'}"><b>${dif<0?'FALTANTE':'SOBRANTE'}</b></span><b class="${dif<0?'rojo':'verde'}">${fmt(Math.abs(dif))}</b></div>
       </div>
     </div>
@@ -791,8 +801,10 @@ function vDia(){
       db.rendicion[inp.dataset.rend] = num(inp.value);
       guardar();
       inp.value = fmtMiles(inp.value);
-      const c = totalRend(), v = totalTurno(), dd = c - v;
-      $('#totCaja').textContent = fmt(c);
+      const dd = difTurno();
+      $('#totCaja').textContent = fmt(totalRend());
+      $('#deberia').textContent = fmt(deberiaEf());
+      $('#contado').textContent = fmt(num(db.rendicion.pesos));
       $('#lineaDif').innerHTML = `<span class="${dd<0?'rojo':'verde'}"><b>${dd<0?'FALTANTE':'SOBRANTE'}</b></span><b class="${dd<0?'rojo':'verde'}">${fmt(Math.abs(dd))}</b>`;
     });
   });
@@ -808,17 +820,17 @@ function vDia(){
   });
 }
 function pedirCierre(){
-  const caja = totalRend(), dif = caja - totalTurno();
+  const caja = totalRend(), dif = difTurno();
   $('#cierreResumen').innerHTML = `
-    <div class="resline"><span class="mut">Total caja</span><b>${fmt(caja)}</b></div>
-    <div class="resline"><span class="mut">Ventas del turno (C/F + S/F + bombas)</span><b>${fmt(totalTurno())}</b></div>
+    <div class="resline"><span class="mut">Total en mano (contado)</span><b>${fmt(caja)}</b></div>
+    <div class="resline"><span class="mut">Debería haber en efectivo (turno − MP − cta. cte. − gastos − retiros)</span><b>${fmt(deberiaEf())}</b></div>
     <div class="resline"><span><b>${dif<0?'Faltante':'Sobrante'}</b></span><b class="${dif<0?'rojo':'verde'}" style="font-size:18px">${fmt(Math.abs(dif))}</b></div>`;
   $('#mCerrar').showModal();
 }
 $('#mCerrarCancelar').onclick = ()=>$('#mCerrar').close();
 $('#mCerrarOk').onclick = ()=>{
-  db.historial.push({fecha:hoyISO(), caja:totalRend(), ventas:totalTurno(), comb:totalComb(),
-    dif: totalRend()-totalTurno(), ventasN:delDia().length});
+  db.historial.push({fecha:hoyISO(), caja:totalRend(), ventas:totalDue(), comb:totalComb(),
+    dif: difTurno(), ventasN:delDia().length});
   db.ventas = db.ventas.filter(v=>v.fecha !== hoyISO());
   db.rendicion = {pesos:0, ctacte:0, tarjetas:0, gastos:0, retiros:0};
   db.productos.forEach(p=>{ p.iniTurno = p.cant; });
